@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/GameTime/GameTime.csproj" />
+  <Project Path="tests/GameTime.Tests/GameTime.Tests.csproj" />
+</Solution>
