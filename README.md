@@ -1,122 +1,124 @@
-# GameTime — предварительная версия 0.3.2
+**English** | [Русский](README.ru.md)
 
-Небольшой локальный таймер игр для Windows 10/11 x64: показывает, сколько вы играли сегодня,
-и мягко предупреждает о дневном ориентире. Не закрывает и не блокирует игры.
+# GameTime — preview version 0.3.2
 
-## Запуск готовой программы
+A small local game timer for Windows 10/11 x64. It shows how much you have played today
+and gently warns you when you reach your daily target. It never closes or blocks games.
+The application interface is currently in Russian.
 
-Скачайте `GameTime.exe` со [страницы релиза](https://github.com/alensp55/gametimer/releases/tag/v0.3.2)
-и запустите файл. Для опубликованной self-contained версии установка .NET не нужна.
-При локальной сборке готовый файл находится в `artifacts\win-x64\GameTime.exe`.
+## Run the app
 
-1. Добавьте имена игровых `.exe` вручную или кнопкой «Выбрать .exe».
-2. Выберите режим учёта. При необходимости включите дневной ориентир и задайте его в минутах.
-3. На вкладке «Окно таймера» выберите монитор, угол, отступы и непрозрачность.
-   «Предпросмотр на 15 секунд» показывает окно даже без запущенной игры.
-4. «Применить» сохраняет параметры и оставляет настройки открытыми.
-   «Сохранить и свернуть» дополнительно закрывает настройки; иконка остаётся в системном трее.
-5. Автозапуск включается только флажком «Запускать вместе с Windows» и сохранением настроек.
-   Из автозапуска приложение открывается сразу в трее, даже если файл настроек отсутствует.
-   При ручном запуске без `--tray` открывается окно настроек.
+Download `GameTime.exe` from the [release page](https://github.com/alensp55/gametimer/releases/tag/v0.3.2)
+and run it. The published self-contained version does not require a separate .NET installation.
+When building locally, the executable is in `artifacts\win-x64\GameTime.exe`.
 
-Двойной щелчок по значку tray открывает настройки. Контекстное меню содержит паузу и выход.
-Крестик окна настроек закрывает его без сохранения внесённых в форму изменений, но оставляет мониторинг в фоне.
-Повторный запуск не создаёт второй экземпляр в той же пользовательской сессии.
+1. Add game `.exe` names manually or use **Choose .exe** (`Выбрать .exe`).
+2. Choose a tracking mode. Optionally enable a daily target and set it in minutes.
+3. On the **Timer window** (`Окно таймера`) tab, choose a monitor, corner, offsets and opacity.
+   **Preview for 15 seconds** (`Предпросмотр на 15 секунд`) shows the timer even without a running game.
+4. **Apply** (`Применить`) saves the settings and keeps the settings window open.
+   **Save and minimize** (`Сохранить и свернуть`) also closes the settings window; the tray icon remains.
+5. Enable **Start with Windows** (`Запускать вместе с Windows`) and save to turn on startup at sign-in.
+   At sign-in, the app starts directly in the tray, even if the settings file is missing.
+   A manual launch without `--tray` opens the settings window.
 
-## Как считается время
+Double-click the tray icon to open settings. Its context menu includes pause and exit.
+Closing the settings window with its X button discards unsaved form changes and keeps tracking in the background.
+Launching the app again does not create a second instance in the same Windows user session.
 
-- «Пока игровой .exe запущен» учитывает фон, меню игры и ожидание матча.
-- «Только когда окно игры активно» учитывает foreground-процесс из списка.
-- Сопоставление имён файлов не зависит от регистра. Полный путь не сохраняется.
-- Процессы опрашиваются раз в 60 секунд; при запуске, смене настроек и системных событиях — дополнительно.
-- Каждый интервал относится к состоянию на предыдущем опросе. Это приближённая оценка:
-  короткая игра может быть пропущена, после закрытия игры возможна лишняя неполная минута.
-  При частых переключениях ошибка накапливается. Это не точный секундомер активности.
-- Если одновременно работают несколько игр, отдельное время пополняется у каждой,
-  но общий дневной итог растёт только один раз за интервал.
-- На экране показаны полные часы и минуты. В JSON сохраняются секунды с дробной частью.
-- Сон, гибернация, блокировка/отключение пользовательской сессии и ручная пауза исключаются.
-- Программа не восстанавливает игру за время, пока сама была выключена.
+## How time is counted
 
-День определяется локальной датой Windows. В полночь дневные данные заменяются новыми.
-При следующем запуске также проверяется дата. Отдельной истории дней нет.
-Перевод часов или часового пояса не создаёт игровое время: интервал на таком переходе пропускается.
-При переходе на другую календарную дату начинается новый счётчик, в том числе при ручном переводе даты назад.
-Длинные промежутки без наблюдения (более 90 секунд между опросами) также пропускаются.
+- **While the game .exe is running** (`Пока игровой .exe запущен`) includes background time, menus and matchmaking.
+- **Only while the game window is active** (`Только когда окно игры активно`) counts a listed foreground process.
+- Executable names are matched without regard to case. Full paths are not stored.
+- Processes are checked every 60 seconds, with additional checks at startup, after settings changes and system events.
+- Each interval is attributed to the state seen at the previous check. This is an approximation:
+  short sessions may be missed, and closing a game may add up to an extra partial minute.
+  Frequent switching can accumulate error. This is not a precise activity stopwatch.
+- When several games run at once, each game's time increases, but the daily total increases only once per interval.
+- The display shows whole hours and minutes. JSON stores seconds, including fractional seconds.
+- Sleep, hibernation, a locked or disconnected user session, and manual pauses are excluded.
+- The app does not reconstruct gaming time from periods when it was not running.
 
-На вкладке «Сегодня» можно изменить время выбранной игры или удалить её строку.
-Двойной щелчок по строке также открывает редактор часов и минут; клавиша Delete удаляет строку с подтверждением.
-Общий дневной итог пересчитывается при изменении времени или удалении строки.
-Изменения сохраняются сразу, без кнопки «Применить»; удаление последней строки обнуляет итог.
-При последовательной игре итог меняется на разницу между старым и новым временем строки.
-Для одновременных игр точные пересечения не хранятся: скорректированный итог ограничивается снизу
-временем самой долгой оставшейся игры, сверху — суммой оставшихся строк.
-Если игра продолжает работать, учёт продолжается и удалённая строка появится снова при следующем начислении.
+The day follows the local Windows date. At midnight, the daily data is replaced with a fresh set of counters.
+The date is also checked at startup. There is no separate history of past days.
+Changing the clock or time zone does not create gaming time: the interval spanning the change is skipped.
+A change to another calendar date starts a new counter, including when the date is manually moved backward.
+Long gaps without observation, over 90 seconds between checks, are also skipped.
 
-## Таймер
+On the **Today** (`Сегодня`) tab, you can edit a game's time or delete its row.
+Double-clicking a row also opens the hours-and-minutes editor; Delete removes a row after confirmation.
+Editing or deleting a row recalculates the daily total.
+Changes are saved immediately, without **Apply**; deleting the last row resets the total to zero.
+For games played sequentially, the total changes by the difference between the row's old and new time.
+Exact overlaps between simultaneous games are not stored: the adjusted total is bounded by
+the longest remaining game's time and the sum of the remaining rows.
+If a game is still running, tracking continues and its deleted row reappears when more time is recorded.
 
-Таймер показывает только часы и минуты: `01:37`, без заголовка и полосы прогресса.
-Окно подстраивается под ширину строки и имеет небольшой отступ вокруг неё.
-Если ориентир включён, формат — `01:37 / 02:00`; после превышения — `02:17 / 02:00 +17 мин`.
-При достижении ориентира используется розовый цвет и необязательная плавная пульсация с периодом 4 секунды.
-Предупреждения на 80% нет. Без ориентира нет ни выделения, ни пульсации.
-Ориентир от 1 до 1440 минут; в новых настройках он выключен. В JSON значение 0 означает выключенный ориентир.
-При обновлении сохранённый ранее ориентир остаётся включённым; его можно отключить флажком «Включить».
-Ни звуков, ни блокировок нет.
+## Timer
 
-По умолчанию включён флажок «Только при запущенной игре»: окно показывается при обнаруженной игре
-и скрывается после опроса, на котором игры уже нет. Проверяется запуск игры, даже если режим учёта
-выбран «Только когда окно игры активно», а игра находится в фоне.
-Если снять этот флажок, таймер отображается и без игры. Пауза, сон и блокировка сеанса скрывают окно.
-При выключенном отображении учёт продолжается. Окно не получает фокус и пропускает клики.
-Позиция меняется в настройках, перетаскивание во время игры не предусмотрено.
+The timer displays hours and minutes only: `01:37`, without a heading or progress bar.
+The window fits the text with a small amount of padding.
+With a target enabled, it shows `01:37 / 02:00`; after exceeding it, `02:17 / 02:00 +17 мин`.
+At the target, the text turns pink and can optionally pulse gently over a four-second cycle.
+There is no 80% warning. With no target, there is no highlighting or pulsing.
+The target can be 1–1440 minutes and is off in new settings. A JSON value of 0 means it is disabled.
+An existing saved target stays enabled after an update; clear **Enable** (`Включить`) to turn it off.
+There are no sounds or game blocks.
 
-Оконный режим и borderless — целевые режимы для показа поверх игры.
-В настоящем exclusive fullscreen отдельное Windows-окно может не отображаться поверх игры:
-используйте второй монитор или borderless. Программа не вмешивается в режим вывода игры.
-Режим «Монитор игры (авто)» запоминает экран последней обнаруженной активной игры,
-а до первого такого наблюдения использует основной экран.
-При отключении выбранного монитора окно переносится на основной; ранее выбранный экран остаётся в настройках.
-Чтобы обновить список доступных мониторов после подключения, заново откройте настройки.
+**Only while a game is running** (`Только при запущенной игре`) is enabled by default:
+the timer appears when a game is detected and disappears at the first check that finds no game.
+This checks whether a game is running even when tracking is set to foreground-only and the game is in the background.
+Clear the checkbox to show the timer without a running game. Pausing, sleep and session locking hide the window.
+Disabling the timer display does not stop tracking. The window does not take focus and lets clicks pass through.
+Its position is changed in settings; dragging it during a game is not supported.
 
-## Данные и доверие
+Windowed and borderless modes are the intended modes for displaying the timer over a game.
+In true exclusive fullscreen, a separate Windows window may not appear over the game:
+use a second monitor or borderless mode. The app does not interfere with the game's display mode.
+**Game monitor (auto)** remembers the screen of the last detected foreground game.
+Until a game has been observed, it uses the primary screen.
+If the selected monitor is disconnected, the timer moves to the primary screen; the saved monitor choice is retained.
+Reopen settings to refresh the list of available monitors after connecting a display.
 
-Данные находятся в `%LocalAppData%\GameTime`:
+## Local data and trust
 
-- `settings.json` — параметры приложения;
-- `today.json` — текущая дата, общий итог и время отдельных игр;
-- `.bak` — предыдущая сохранённая копия для восстановления, это не архив дневной истории.
+Data is stored in `%LocalAppData%\GameTime`:
 
-Изменившаяся статистика записывается каждый опрос, при паузе и штатном выходе.
-Используются временный файл, сброс записи на диск и атомарная замена файла.
-При аварии приложения возможна потеря последнего несохранённого интервала (обычно до минуты);
-при отключении питания или повреждении диска абсолютная сохранность не гарантируется.
-Если основная копия повреждена, приложение пробует резервную и показывает предупреждение.
-Повреждённый файл сохраняется с суффиксом `.damaged-...`. Если исправных копий нет,
-программа сообщает ошибку и не обнуляет их молча. Ошибка записи отображается через tray и настройки.
+- `settings.json` — application settings;
+- `today.json` — the current date, daily total and individual game times;
+- `.bak` — the previous saved copy for recovery, not an archive of past days.
 
-У приложения нет сетевых запросов, телеметрии, обновлений, аккаунтов, служб и драйверов.
-Не используются DLL injection, графические/input hooks, чтение или изменение памяти игр.
-WinAPI запрашивает имя foreground-процесса с `PROCESS_QUERY_LIMITED_INFORMATION`;
-для обнаружения запущенных игр используется стандартное перечисление имён процессов .NET.
-Недоступные и завершившиеся процессы пропускаются, повышение привилегий не запрашивается.
+Changed statistics are saved at each check, on pause and on a normal exit.
+Writes use a temporary file, a flush to disk and an atomic file replacement.
+A crash may lose the last unsaved interval, usually up to a minute;
+absolute data preservation cannot be guaranteed after a power loss or disk damage.
+If the main copy is damaged, the app tries the backup and displays a warning.
+The damaged file is retained with a `.damaged-...` suffix. If neither copy is valid,
+the app reports an error instead of silently resetting the data. Write errors appear in the tray and settings.
 
-Автозапуск — значение `GameTime` в `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
-Он запускает текущий `.exe` с аргументом `--tray`. После перемещения `.exe` выключите и снова включите автозапуск.
-Чтобы удалить программу, выключите автозапуск, выйдите через tray и удалите `.exe`.
-Папку с данными можно удалить отдельно, если статистика и настройки больше не нужны.
+The app has no network requests, telemetry, updates, accounts, services or drivers.
+It does not use DLL injection, graphics or input hooks, or read or modify game memory.
+WinAPI queries the foreground process name using `PROCESS_QUERY_LIMITED_INFORMATION`;
+standard .NET process-name enumeration is used to detect running games.
+Inaccessible or exited processes are skipped. The app does not request elevated privileges.
 
-Предварительная сборка не подписана сертификатом издателя.
-Нельзя гарантировать отсутствие ложных срабатываний всех антивирусов или совместимость со всеми античитами.
-Не отключайте защиту ради запуска приложения. Проверку конкретных игр и экранных режимов проводите отдельно.
+Startup at sign-in uses the `GameTime` value in `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`.
+It launches the current `.exe` with `--tray`. After moving the executable, disable and re-enable startup.
+To uninstall, disable startup, exit through the tray and delete the `.exe`.
+You can separately delete the data folder if you no longer need its settings and statistics.
 
-## Сборка из исходников
+This preview build is not signed with a publisher certificate.
+The absence of antivirus false positives or compatibility with every anti-cheat cannot be guaranteed.
+Do not disable protection to run the app. Check your particular games and display modes separately.
 
-Требуется .NET 10 SDK и Windows. Основное приложение и проверочный проект не имеют сторонних PackageReference.
-Для первой self-contained публикации SDK скачивает официальные пакеты среды .NET с NuGet.
-Это операция сборки: готовая программа в сеть не обращается.
+## Build from source
 
-Из корня проекта:
+Requires Windows and the .NET 10 SDK. Neither the app nor the test project has third-party PackageReference entries.
+For the first self-contained publish, the SDK downloads official .NET runtime packages from NuGet.
+This happens during the build; the finished application does not make network requests.
+
+From the repository root:
 
 ```powershell
 dotnet build
@@ -124,17 +126,17 @@ dotnet run --project .\src\GameTime\GameTime.csproj
 dotnet build -c Release
 ```
 
-Один автономный `.exe` для Windows x64:
+Publish one self-contained Windows x64 `.exe`:
 
 ```powershell
 dotnet publish .\src\GameTime\GameTime.csproj -c Release -r win-x64 --self-contained true `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o .\artifacts\win-x64
 ```
 
-Результат: `artifacts\win-x64\GameTime.exe`. Символы встроены, trimming выключен.
-Среда .NET включена в `.exe`; её нативные файлы могут извлекаться в `%TEMP%\.net` при первом запуске.
+Output: `artifacts\win-x64\GameTime.exe`. Debug symbols are embedded and trimming is disabled.
+The .NET runtime is bundled; its native files may be extracted to `%TEMP%\.net` on the first launch.
 
-Проверки без стороннего тестового фреймворка:
+Checks without a third-party test framework:
 
 ```powershell
 dotnet run --project .\tests\GameTime.Tests\GameTime.Tests.csproj -c Release
@@ -143,23 +145,23 @@ dotnet run --project .\tests\GameTime.Tests\GameTime.Tests.csproj -c Release -- 
   --exe .\artifacts\win-x64\GameTime.exe
 ```
 
-`--live` дополнительно выполняет настоящий минутный цикл мониторинга (около 63 секунд).
-`--exe` проверяет, что указанный `.exe` завершает повторный запуск до доступа к данным.
-Для этой проверки основное приложение должно быть закрыто.
-Тесты используют собственные файлы в `artifacts\tests`, не меняют автозапуск и пользовательскую статистику.
-Тесты интерфейса кратковременно открывают тестовые окна и сохраняют изображения трёх вкладок и состояний overlay.
-Недоступная в изолированном рабочем столе проверка foreground явно отмечается как `SKIP`.
+`--live` also runs a real one-minute tracking cycle, taking about 63 seconds.
+`--exe` checks that the supplied executable exits on a duplicate launch before accessing the data.
+The main application must be closed for that check.
+Tests use their own files in `artifacts\tests` and do not change startup registration or user statistics.
+UI tests briefly open test windows and save images of the three tabs and timer states.
+A foreground check that cannot run on an isolated desktop is explicitly marked `SKIP`.
 
-## Структура
+## Project structure
 
-Один WinForms-проект и небольшой исполняемый проект проверок.
-`GameTracker` начисляет время по снимкам; `TimeStore` хранит дневные итоги;
-`AtomicJson` отвечает за запись/восстановление; `GameDetector` и `NativeMethods` определяют игры;
-`OverlayForm`, `SettingsForm` и `EditTimeForm` рисуют интерфейс; `TrayManager` управляет tray;
-`GameTimeContext` связывает жизненный цикл, таймеры и события Windows;
-`StartupRegistration` включает автозапуск только по выбору пользователя.
+One WinForms project and a small executable test project.
+`GameTracker` accumulates time from observations; `TimeStore` stores daily totals;
+`AtomicJson` handles writes and recovery; `GameDetector` and `NativeMethods` identify games;
+`OverlayForm`, `SettingsForm` and `EditTimeForm` provide the interface; `TrayManager` manages the tray;
+`GameTimeContext` connects the application lifecycle, timers and Windows events;
+`StartupRegistration` enables startup only when the user chooses it.
 
-Результаты фактически выполненных проверок записаны в `VERIFICATION.md`.
+Results of checks actually performed are recorded in `VERIFICATION.md` (in Russian).
 
-Внизу общего окна указаны автор `(c) alensp55@gmail.com` и ссылка `https://github.com/alensp55/gametimer`.
-Ссылка открывается в браузере только по нажатию; само приложение не выполняет сетевых запросов.
+The main window footer shows `(c) alensp55@gmail.com` and `https://github.com/alensp55/gametimer`.
+The link opens a browser only when clicked; the app itself does not make network requests.
