@@ -12,6 +12,7 @@ internal sealed class GameTimeContext : ApplicationContext
     private readonly GameTracker _tracker;
     private readonly OverlayForm _overlay = new();
     private readonly TrayManager _tray;
+    private readonly ProcessEnforcer _enforcer = new();
     private readonly System.Windows.Forms.Timer _poll = new() { Interval = 60_000 };
     private readonly System.Windows.Forms.Timer _midnight = new();
     private readonly System.Windows.Forms.Timer _previewTimeout = new() { Interval = 15_000 };
@@ -24,6 +25,10 @@ internal sealed class GameTimeContext : ApplicationContext
     private bool _exiting;
     private string? _storageError;
     private string? _trackingError;
+    private string? _terminationError;
+    private long _lastSaveTick;
+    private DateOnly _noticeDate;
+    private HashSet<string> _notifiedLimits = new(StringComparer.OrdinalIgnoreCase);
 
     private bool Unavailable => _paused || _locked || _suspended;
 
@@ -32,15 +37,17 @@ internal sealed class GameTimeContext : ApplicationContext
         _directory = directory;
         _settingsPath = Path.Combine(directory, "settings.json");
         _settings = AtomicJson.Read(_settingsPath, () => new AppSettings(), value => value.Validate(), out var warning);
+        UiText.Language = _settings.Language;
         _settings.AutoStart = StartupRegistration.IsEnabled();
+        _poll.Interval = _settings.PollIntervalSeconds * 1000;
         _store = new TimeStore(Path.Combine(directory, "today.json"), DateOnly.FromDateTime(DateTime.Now));
         _tracker = new GameTracker(_store, NativeMethods.ReadClock, GameDetector.Detect);
         _tray = new TrayManager(OpenSettings, TogglePause, RequestExit);
         MainForm = _dispatcher;
         _ = _dispatcher.Handle;
-        _dispatcher.ShuttingDown += () => SampleAndSave();
+        _dispatcher.ShuttingDown += () => SampleAndSave(enforce: false);
         _dispatcher.SessionEnded += ExitThread;
-        _poll.Tick += (_, _) => SampleAndSave();
+        _poll.Tick += (_, _) => SampleAndSave(forceSave: false);
         _midnight.Tick += (_, _) =>
         {
             SampleAndSave();
@@ -64,7 +71,7 @@ internal sealed class GameTimeContext : ApplicationContext
     {
         if (_settingsForm is null || _settingsForm.IsDisposed)
         {
-            _settingsForm = new SettingsForm(_settings, _directory, SaveSettings, Preview, ChangeGameTime);
+            _settingsForm = new SettingsForm(_settings, _directory, SaveSettings, Preview, ChangeGameTime, RemoveGame);
             _settingsForm.FormClosed += (_, _) =>
             {
                 _settingsForm = null;
@@ -86,16 +93,19 @@ internal sealed class GameTimeContext : ApplicationContext
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            MessageBox.Show(_settingsForm, error.Message, "Не удалось сохранить настройки",
+            MessageBox.Show(_settingsForm, error.Message, UiText.Get("Не удалось сохранить настройки"),
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
-        SampleAndSave();
+        SampleAndSave(enforce: false);
         bool autoStartChanged = settings.AutoStart != _settings.AutoStart;
         _settings = settings;
+        UiText.Language = settings.Language;
+        _poll.Interval = settings.PollIntervalSeconds * 1000;
         _tracker.Rebase(_settings, Unavailable);
+        EnforceRules();
         UpdateViews();
-        if (!autoStartChanged)
+        if (!autoStartChanged && !settings.AutoStart)
             return true;
         try
         {
@@ -106,13 +116,14 @@ internal sealed class GameTimeContext : ApplicationContext
             or System.Security.SecurityException)
         {
             _settings.AutoStart = StartupRegistration.IsEnabled();
-            MessageBox.Show(_settingsForm, "Настройки сохранены, но автозапуск изменить не удалось.\n" + error.Message,
-                "Автозапуск", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(_settingsForm,
+                UiText.Get("Настройки сохранены, но автозапуск изменить не удалось.\n") + error.Message,
+                UiText.Get("Автозапуск"), MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
     }
 
-    private void SampleAndSave()
+    private void SampleAndSave(bool enforce = true, bool forceSave = true)
     {
         try
         {
@@ -121,40 +132,102 @@ internal sealed class GameTimeContext : ApplicationContext
         }
         catch (Win32Exception error)
         {
-            _trackingError = "Ошибка определения игры: " + error.Message;
+            _trackingError = UiText.Get("Ошибка определения игры: ") + error.Message;
             _tracker.Rebase(_settings, paused: true);
         }
-        SaveTime();
+        SaveTime(forceSave);
+        if (enforce)
+            EnforceRules();
         UpdateViews();
+    }
+
+    private void EnforceRules()
+    {
+        if (_paused || _suspended)
+            return;
+        if (_noticeDate != _store.Today.Date)
+        {
+            _noticeDate = _store.Today.Date;
+            _notifiedLimits.Clear();
+        }
+        var reached = ProcessEnforcer.GetReachedLimits(_settings, _store.Today, DateTime.Now, terminate: false);
+        var newWarnings = reached.Except(_notifiedLimits, StringComparer.OrdinalIgnoreCase).ToList();
+        _notifiedLimits = reached;
+        if (newWarnings.Count > 0)
+            _tray.Notify(UiText.Get("Достигнут дневной лимит: ") + string.Join(", ", newWarnings));
+        var targets = ProcessEnforcer.GetTargets(_settings, _store.Today, DateTime.Now);
+        var result = _enforcer.Enforce(targets);
+        if (result.Stopped.Count > 0)
+        {
+            _tracker.ExcludeTerminated(result.Stopped);
+            _tray.Notify(UiText.Get("Принудительно завершены: ") + string.Join(", ", result.Stopped));
+        }
+        string? error = result.Errors.Count == 0 ? null
+            : UiText.Get("Не удалось завершить: ") + string.Join("; ", result.Errors);
+        if (error is not null && error != _terminationError)
+            _tray.Notify(error);
+        _terminationError = error;
+    }
+
+    private bool RemoveGame(DateOnly date, string game)
+    {
+        SampleAndSave(enforce: false);
+        try
+        {
+            if (_store.Today.Date != date)
+                throw new InvalidDataException(UiText.Get("Дата изменилась. Выберите приложение заново."));
+            var settings = _settings.Copy();
+            settings.Games.RemoveAll(name => name.Equals(game, StringComparison.OrdinalIgnoreCase));
+            settings.AppLimits.Remove(game);
+            if (!SaveSettings(settings))
+                return false;
+            if (_store.Today.GameSeconds.ContainsKey(game))
+                _store.SetGameTime(date, game, null);
+            return true;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
+        {
+            MessageBox.Show(_settingsForm, error.Message, UiText.Get("Удаление не выполнено"),
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+        finally
+        {
+            UpdateViews();
+        }
     }
 
     private void ChangeGameTime(DateOnly date, string game, double? seconds)
     {
-        SampleAndSave();
+        SampleAndSave(enforce: false);
         try
         {
             _store.SetGameTime(date, game, seconds);
             _storageError = null;
+            EnforceRules();
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            MessageBox.Show(_settingsForm, error.Message, "Изменение времени не сохранено",
+            MessageBox.Show(_settingsForm, error.Message, UiText.Get("Изменение времени не сохранено"),
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         UpdateViews();
     }
 
-    private bool SaveTime()
+    private bool SaveTime(bool force = true)
     {
+        if (!force && _storageError is null && Environment.TickCount64 - _lastSaveTick < 60_000)
+            return true;
         try
         {
             _store.Save();
             _storageError = null;
+            _lastSaveTick = Environment.TickCount64;
             return true;
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            string message = "Статистика не сохранена: " + error.Message;
+            string message = UiText.Get("Статистика не сохранена: ") + error.Message;
             if (_storageError != message)
                 _tray.Notify(message);
             _storageError = message;
@@ -164,9 +237,11 @@ internal sealed class GameTimeContext : ApplicationContext
 
     private void TogglePause()
     {
-        SampleAndSave();
+        SampleAndSave(enforce: false);
         _paused = !_paused;
         _tracker.Rebase(_settings, Unavailable);
+        _terminationError = null;
+        EnforceRules();
         EndPreview();
     }
 
@@ -176,19 +251,21 @@ internal sealed class GameTimeContext : ApplicationContext
             return _storageError;
         if (_trackingError is not null)
             return _trackingError;
+        if (_terminationError is not null)
+            return _terminationError;
         if (_paused)
-            return "Мониторинг на паузе";
+            return UiText.Get("Учёт и принудительное завершение на паузе");
         if (_locked || _suspended)
-            return "Учёт приостановлен: сессия недоступна";
+            return UiText.Get("Учёт приостановлен: сессия недоступна");
         if (_settings.Games.Count == 0)
-            return "Добавьте игровые .exe в список ниже";
+            return UiText.Get("Добавьте приложения в список ниже");
         if (_tracker.Current.Warning is not null)
             return _tracker.Current.Warning;
         if (_settings.Monitor.Length > 0 && !Screen.AllScreens.Any(s => s.DeviceName == _settings.Monitor))
-            return "Выбранный монитор отключён; таймер перенесён на основной";
+            return UiText.Get("Выбранный монитор отключён; таймер перенесён на основной");
         if (_tracker.Current.Games.Count == 0)
-            return "Ожидание игры · следующая проверка в течение минуты";
-        return "Учитываются: " + string.Join(", ", _tracker.Current.Games);
+            return UiText.Format("Ожидание приложения · опрос раз в {0} сек.", _settings.PollIntervalSeconds);
+        return UiText.Get("Учитываются: ") + string.Join(", ", _tracker.Current.Games);
     }
 
     private void UpdateViews()
@@ -243,6 +320,7 @@ internal sealed class GameTimeContext : ApplicationContext
                 _locked = args.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.ConsoleDisconnect
                     or SessionSwitchReason.RemoteDisconnect;
                 _tracker.Rebase(_settings, Unavailable);
+                EnforceRules();
                 EndPreview();
             });
         }
@@ -257,6 +335,7 @@ internal sealed class GameTimeContext : ApplicationContext
             SampleAndSave();
             _suspended = args.Mode == PowerModes.Suspend;
             _tracker.Rebase(_settings, Unavailable);
+            EnforceRules();
             ScheduleMidnight();
             EndPreview();
         });
@@ -270,6 +349,7 @@ internal sealed class GameTimeContext : ApplicationContext
             _tracker.Rebase(_settings, Unavailable);
             SaveTime();
             ScheduleMidnight();
+            EnforceRules();
             UpdateViews();
         });
     }
@@ -278,10 +358,11 @@ internal sealed class GameTimeContext : ApplicationContext
 
     private void RequestExit()
     {
-        SampleAndSave();
+        SampleAndSave(enforce: false);
         if (_storageError is not null)
         {
-            var result = MessageBox.Show(_storageError + "\nВыйти с потерей несохранённого времени?", "GameTime",
+            var result = MessageBox.Show(
+                _storageError + UiText.Get("\nВыйти с потерей несохранённого времени?"), "OneMoreTimer",
                 MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (result != DialogResult.Yes)
                 return;

@@ -23,9 +23,11 @@ internal static class AtomicJson
         catch (Exception error) when (error is IOException or JsonException or InvalidDataException)
         {
             if (!File.Exists(path + ".bak"))
-                throw new InvalidDataException($"Не удалось прочитать {path}. Данные не перезаписаны.", error);
+                throw new InvalidDataException(UiText.Format("Не удалось прочитать {0}. Данные не перезаписаны.", path),
+                    error);
             T recovered = ReadOne(path + ".bak", validate);
-            warning = $"Восстановлена резервная копия {Path.GetFileName(path)}. Последняя запись могла потеряться.";
+            warning = UiText.Format("Восстановлена резервная копия {0}. Последняя запись могла потеряться.",
+                Path.GetFileName(path));
             // Keep the damaged primary for inspection; do not turn it into the next backup.
             if (File.Exists(path))
             {
@@ -40,7 +42,7 @@ internal static class AtomicJson
     {
         using var stream = File.OpenRead(path);
         T value = JsonSerializer.Deserialize<T>(stream, Options)
-            ?? throw new InvalidDataException("JSON не содержит данных.");
+            ?? throw new InvalidDataException(UiText.Get("JSON не содержит данных."));
         validate(value);
         return value;
     }

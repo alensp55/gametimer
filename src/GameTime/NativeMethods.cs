@@ -26,6 +26,12 @@ internal static class NativeMethods
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool QueryUnbiasedInterruptTime(out ulong ticks);
 
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool TerminateProcess(SafeProcessHandle process, uint exitCode);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(nint window, nint after, int x, int y, int cx, int cy, uint flags);
 
@@ -53,6 +59,34 @@ internal static class NativeMethods
     {
         SetWindowPos(window, new nint(-1), 0, 0, 0, 0, 0x0010 | 0x0001 | 0x0002);
     }
+
+    internal static bool TerminateMatchingProcess(int processId, string expectedName)
+    {
+        if (processId <= 4 || processId == Environment.ProcessId)
+            return false;
+        if (!ProcessIdToSessionId((uint)Environment.ProcessId, out uint ownSession)
+            || !ProcessIdToSessionId((uint)processId, out uint session) || session == 0 || session != ownSession)
+            return false;
+        // Hold one handle for identity verification and termination to avoid acting on a reused PID.
+        using var process = OpenProcess(0x1000 | 0x0001, false, (uint)processId);
+        if (process.IsInvalid)
+        {
+            int error = Marshal.GetLastWin32Error();
+            if (error == 87)
+                return false;
+            throw new Win32Exception(error);
+        }
+        var path = new StringBuilder(32768);
+        uint size = (uint)path.Capacity;
+        if (!QueryFullProcessImageName(process, 0, path, ref size))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        if (!Path.GetFileName(path.ToString()).Equals(expectedName, StringComparison.OrdinalIgnoreCase)
+            || !ProcessIdToSessionId((uint)processId, out session) || session != ownSession)
+            return false;
+        if (!TerminateProcess(process, 1))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+        return true;
+    }
 }
 
 internal static class GameDetector
@@ -61,7 +95,9 @@ internal static class GameDetector
     {
         if (settings.Games.Count == 0)
             return GameSnapshot.Empty;
-        var wanted = settings.Games.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var wanted = settings.Games.Where(settings.IsTracked).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (wanted.Count == 0)
+            return GameSnapshot.Empty;
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         nint foreground = NativeMethods.GetForegroundWindow();
         string? activeName = NativeMethods.ForegroundName(foreground);
@@ -82,16 +118,23 @@ internal static class GameDetector
                 }
             }
         }
-        bool hasRunningGame = activeGame || found.Count > 0;
+        if (activeGame)
+            found.Add(wanted.First(name => name.Equals(activeName, StringComparison.OrdinalIgnoreCase)));
+        bool hasRunningGame = found.Count > 0;
+        var runningGames = new HashSet<string>(found, StringComparer.OrdinalIgnoreCase);
         string? warning = null;
-        if (settings.Mode == TrackingMode.Foreground)
+        if (wanted.Any(name => settings.TrackingFor(name) == TrackingMode.Foreground)
+            && foreground != 0 && activeName is null)
+            warning = UiText.Get("Активный процесс недоступен для определения.");
+        found = SelectCounted(settings, found, activeName);
+        return new GameSnapshot(found, activeGame ? foreground : 0, warning)
         {
-            found.Clear();
-            if (activeGame)
-                found.Add(wanted.First(name => name.Equals(activeName, StringComparison.OrdinalIgnoreCase)));
-            if (foreground != 0 && activeName is null)
-                warning = "Активный процесс недоступен для определения.";
-        }
-        return new GameSnapshot(found, activeGame ? foreground : 0, warning) { HasRunningGame = hasRunningGame };
+            HasRunningGame = hasRunningGame, RunningGames = runningGames
+        };
     }
+
+    internal static HashSet<string> SelectCounted(AppSettings settings, IEnumerable<string> running, string? activeName)
+        => running.Where(name => settings.IsTracked(name) && (settings.TrackingFor(name) == TrackingMode.Running
+            || name.Equals(activeName, StringComparison.OrdinalIgnoreCase)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 }

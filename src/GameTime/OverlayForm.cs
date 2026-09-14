@@ -22,7 +22,7 @@ internal sealed class OverlayForm : Form
 
     public OverlayForm()
     {
-        Text = "GameTime — таймер";
+        Text = "OneMoreTimer — таймер";
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;

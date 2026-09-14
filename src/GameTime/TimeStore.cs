@@ -9,14 +9,14 @@ internal sealed class DailyStats
     public void Validate()
     {
         if (Date == default || !double.IsFinite(TotalSeconds) || TotalSeconds < 0 || GameSeconds is null)
-            throw new InvalidDataException("Некорректная дневная статистика.");
+            throw new InvalidDataException(UiText.Get("Некорректная дневная статистика."));
         var normalized = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         foreach (var (game, seconds) in GameSeconds)
         {
             if (!double.IsFinite(seconds) || seconds < 0)
-                throw new InvalidDataException("Некорректное время игры.");
+                throw new InvalidDataException(UiText.Get("Некорректное время игры."));
             if (!normalized.TryAdd(AppSettings.NormalizeGame(game), seconds))
-                throw new InvalidDataException("Повторяющаяся игра в статистике.");
+                throw new InvalidDataException(UiText.Get("Повторяющаяся игра в статистике."));
         }
         GameSeconds = normalized;
     }
@@ -68,12 +68,13 @@ internal sealed class TimeStore
     public void SetGameTime(DateOnly date, string game, double? seconds)
     {
         DailyStats corrected = CopyToday(date);
-        if (!corrected.GameSeconds.TryGetValue(game, out double previousSeconds))
-            throw new InvalidDataException("Строка уже отсутствует. Выберите игру заново.");
+        game = AppSettings.NormalizeGame(game);
+        if (!corrected.GameSeconds.TryGetValue(game, out double previousSeconds) && seconds is null)
+            throw new InvalidDataException(UiText.Get("Строка уже отсутствует. Выберите игру заново."));
         if (seconds is { } value)
         {
             if (!double.IsFinite(value) || value < 0)
-                throw new InvalidDataException("Некорректное время игры.");
+                throw new InvalidDataException(UiText.Get("Некорректное время игры."));
             corrected.GameSeconds[game] = value;
         }
         else
@@ -89,7 +90,7 @@ internal sealed class TimeStore
     private DailyStats CopyToday(DateOnly date)
     {
         if (Today.Date != date)
-            throw new InvalidDataException("Дата изменилась. Откройте редактирование времени заново.");
+            throw new InvalidDataException(UiText.Get("Дата изменилась. Откройте редактирование времени заново."));
         return new DailyStats
         {
             Date = Today.Date, TotalSeconds = Today.TotalSeconds,

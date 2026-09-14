@@ -19,22 +19,24 @@ internal sealed class TrayManager : IDisposable
         _pause = new ToolStripMenuItem("Пауза", null, (_, _) => pause());
         _menu.Items.Add(_pause);
         _menu.Items.Add("Выход", null, (_, _) => exit());
-        _icon = new NotifyIcon { Icon = _appIcon, ContextMenuStrip = _menu, Text = "GameTime", Visible = true };
+        _icon = new NotifyIcon { Icon = _appIcon, ContextMenuStrip = _menu, Text = "OneMoreTimer", Visible = true };
         _icon.DoubleClick += (_, _) => settings();
     }
 
     public void Update(double seconds, bool paused, string status)
     {
-        _today.Text = $"Сегодня: {TimerDisplay.Duration(seconds)}";
-        _pause.Text = paused ? "Продолжить мониторинг" : "Пауза";
+        _today.Text = UiText.Get("Сегодня: ") + TimerDisplay.Duration(seconds);
+        _menu.Items[3].Text = UiText.Get("Настройки");
+        _menu.Items[5].Text = UiText.Get("Выход");
+        _pause.Text = UiText.Get(paused ? "Продолжить" : "Пауза учёта и завершения");
         _pause.Checked = paused;
         _status.Text = status.Length > 85 ? status[..82] + "…" : status;
-        _icon.Text = $"GameTime · {TimerDisplay.Duration(seconds)}" + (paused ? " · Пауза" : "");
+        _icon.Text = $"OneMoreTimer · {TimerDisplay.Duration(seconds)}" + (paused ? UiText.Get(" · Пауза") : "");
     }
 
     public void Notify(string message)
     {
-        _icon.ShowBalloonTip(6000, "GameTime", message, ToolTipIcon.Warning);
+        _icon.ShowBalloonTip(6000, "OneMoreTimer", message, ToolTipIcon.Warning);
     }
 
     public void Dispose()

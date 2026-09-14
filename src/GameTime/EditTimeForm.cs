@@ -2,8 +2,8 @@ namespace GameTime;
 
 internal sealed class EditTimeForm : Form
 {
-    private readonly NumericUpDown _hours = new() { Minimum = 0, Maximum = 999, Width = 85 };
-    private readonly NumericUpDown _minutes = new() { Minimum = 0, Maximum = 59, Width = 70 };
+    private readonly IntegerInput _hours = new() { Minimum = 0, Maximum = 999, Width = 85 };
+    private readonly IntegerInput _minutes = new() { Minimum = 0, Maximum = 59, Width = 70 };
     private readonly double _originalSeconds;
 
     internal double Seconds
@@ -18,7 +18,7 @@ internal sealed class EditTimeForm : Form
     public EditTimeForm(string game, double seconds)
     {
         _originalSeconds = seconds;
-        Text = "Изменить время — " + game;
+        Text = UiText.Get("Изменить время — ") + game;
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -58,5 +58,6 @@ internal sealed class EditTimeForm : Form
         Controls.Add(layout);
         AcceptButton = save;
         CancelButton = cancel;
+        UiText.Apply(this);
     }
 }

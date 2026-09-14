@@ -9,6 +9,7 @@ internal sealed record GameSnapshot(HashSet<string> Games, nint GameWindow, stri
 {
     public static GameSnapshot Empty => new(new(StringComparer.OrdinalIgnoreCase), 0);
     public bool HasRunningGame { get; init; }
+    public HashSet<string> RunningGames { get; init; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 internal sealed class GameTracker
@@ -35,7 +36,8 @@ internal sealed class GameTracker
         {
             double elapsed = (now.AwakeTicks - previous.AwakeTicks) / 10_000_000.0;
             double wallElapsed = (now.WallTime - previous.WallTime).TotalSeconds;
-            bool continuous = elapsed <= 90 && Math.Abs(elapsed - wallElapsed) <= 5;
+            double maximumGap = Math.Max(5, settings.PollIntervalSeconds * 1.5);
+            bool continuous = elapsed <= maximumGap && Math.Abs(elapsed - wallElapsed) <= 5;
             if (continuous)
             {
                 // Attribute the observed interval to the previous sample, never multiply the daily total.
@@ -53,5 +55,16 @@ internal sealed class GameTracker
         _last = null;
         Current = GameSnapshot.Empty;
         Poll(settings, paused);
+    }
+
+    public void ExcludeTerminated(IReadOnlySet<string> names)
+    {
+        var running = Current.RunningGames.Where(name => !names.Contains(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Current = Current with
+        {
+            Games = Current.Games.Where(name => !names.Contains(name)).ToHashSet(StringComparer.OrdinalIgnoreCase),
+            RunningGames = running, HasRunningGame = running.Count > 0, GameWindow = 0
+        };
     }
 }

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using GameTime;
 
-internal static class TestRunner
+internal static partial class TestRunner
 {
     private static int _passed;
     private static int _failed;
@@ -16,15 +16,30 @@ internal static class TestRunner
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--termination-probe"))
+        {
+            Console.WriteLine("READY");
+            Thread.Sleep(Timeout.Infinite);
+            return 0;
+        }
         Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.ThrowException);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         _directory = Path.GetFullPath(Path.Combine("artifacts", "tests", DateTime.Now.ToString("yyyyMMdd-HHmmss")));
         Directory.CreateDirectory(_directory);
+        if (args.Contains("--interface") || args.Contains("--unified"))
+        {
+            UnifiedTests();
+            Console.WriteLine($"RESULT: {_passed} passed, {_failed} failed. Artifacts: {_directory}");
+            return _failed == 0 ? 0 : 1;
+        }
         CoreTests();
         StorageTests();
         CorrectionTests();
+        BlockingTests();
         UiTests();
+        UnifiedTests();
         if (args.Contains("--live"))
             Check("real minute polling and persistence", LiveMinute);
         int exeIndex = Array.IndexOf(args, "--exe");
@@ -151,7 +166,7 @@ internal static class TestRunner
             True(!TimerDisplay.LimitReached(5760, settings));
             True(!TimerDisplay.LimitReached(7199, settings));
             True(TimerDisplay.LimitReached(7200, settings));
-            Equal("02:17 / 02:00  +17 мин", TimerDisplay.Text(8220, 120));
+            Equal("02:17 / 02:00  +17 min", TimerDisplay.Text(8220, 120));
             settings.LimitMinutes = 0;
             True(!TimerDisplay.LimitReached(0, settings));
             True(!TimerDisplay.LimitReached(90000, settings));
@@ -284,7 +299,7 @@ internal static class TestRunner
         {
             var store = new TimeStore(Path.Combine(_directory, "stale-correction.json"), new DateOnly(2026, 9, 13));
             store.Add(["one.exe", "two.exe"], 300);
-            Throws<InvalidDataException>(() => store.SetGameTime(store.Today.Date, "missing.exe", 60));
+            Throws<InvalidDataException>(() => store.SetGameTime(store.Today.Date, "missing.exe", null));
             Throws<InvalidDataException>(() => store.SetGameTime(store.Today.Date, "one.exe", -1));
             Throws<InvalidDataException>(() => store.SetGameTime(store.Today.Date, "one.exe", double.NaN));
             Near(300, store.Today.TotalSeconds);
@@ -333,17 +348,17 @@ internal static class TestRunner
         form.UpdateToday(store.Today, "Проверка ручного редактирования");
         form.Show();
         var controls = Descendants(form).ToList();
-        controls.OfType<TabControl>().Single().SelectedIndex = 2;
+        controls.OfType<TabControl>().Single().SelectedIndex = 0;
         Application.DoEvents();
-        var list = controls.OfType<ListView>().Single();
+        var list = controls.OfType<ListView>().Single(control => control.Name == "Applications");
         list.Items[0].Selected = true;
         form.UpdateToday(store.Today, "Обновление без потери выбранной строки");
         Equal(1, list.SelectedItems.Count);
-        SaveThroughEditor(controls.OfType<Button>().Single(button => button.Text == "Изменить время…"), 15);
+        SaveThroughEditor(controls.OfType<Button>().Single(button => button.Text == UiText.Get("Изменить время…")), 15);
         Near(900, store.Today.GameSeconds["one.exe"]);
         Near(900, store.Today.TotalSeconds);
-        True(controls.OfType<Label>().Any(label => label.Text == "Сегодня  00:15"));
-        True(!controls.OfType<Button>().Any(button => button.Text == "Изменить общий итог…"));
+        True(controls.OfType<Label>().Any(label => label.Text == UiText.Get("Сегодня  ") + "00:15"));
+        True(!controls.OfType<Button>().Any(button => button.Text == UiText.Get("Изменить общий итог…")));
         Near(900, new TimeStore(path, store.Today.Date).Today.GameSeconds["one.exe"]);
         Capture(form, "stats-edited.png");
     }
@@ -360,7 +375,7 @@ internal static class TestRunner
             controls.OfType<NumericUpDown>().Single(number => number.Maximum == 59).Value = minutes;
             completed = true;
             timer.Stop();
-            controls.OfType<Button>().Single(control => control.Text == "Сохранить").PerformClick();
+            controls.OfType<Button>().Single(control => control.Text == UiText.Get("Сохранить")).PerformClick();
         };
         timer.Start();
         button.PerformClick();
@@ -394,74 +409,6 @@ internal static class TestRunner
             var clock2 = NativeMethods.ReadClock();
             True(clock2.AwakeTicks >= clock1.AwakeTicks);
         });
-        Check("settings controls and rendered pages", () =>
-        {
-            AppSettings? saved = null;
-            string path = Path.Combine(_directory, "applied-settings.json");
-            using var form = new SettingsForm(new AppSettings(), _directory, value =>
-            {
-                AtomicJson.Write(path, value);
-                saved = value;
-                return true;
-            }, _ => { }, (_, _, _) => { });
-            var today = new DailyStats
-            {
-                Date = new DateOnly(2026, 9, 13), TotalSeconds = 5820,
-                GameSeconds = new() { ["Darktide.exe"] = 4320, ["bf6.exe"] = 1500 }
-            };
-            form.UpdateToday(today,
-                "Учитываются: Darktide.exe · тестовый пример");
-            form.Show();
-            Application.DoEvents();
-            Equal(Path.GetFileName(Environment.ProcessPath!), NativeMethods.ForegroundName(form.Handle));
-            var controls = Descendants(form).ToList();
-            var onlyWithGame = controls.OfType<CheckBox>().Single(check => check.Text == "Только при запущенной игре");
-            True(onlyWithGame.Checked);
-            var input = controls.OfType<TextBox>().Single(text => text.PlaceholderText.Length > 0);
-            input.Text = "Darktide.exe";
-            controls.OfType<Button>().Single(button => button.Text == "Добавить").PerformClick();
-            var apply = controls.OfType<Button>().Single(button => button.Text == "Применить");
-            apply.PerformClick();
-            True(form.Visible);
-            Equal(0, saved!.LimitMinutes);
-            onlyWithGame.Checked = false;
-            apply.PerformClick();
-            True(!saved!.OverlayOnlyWithGame);
-            var useLimit = controls.OfType<CheckBox>().Single(check => check.Text == "Включить");
-            var limit = controls.OfType<NumericUpDown>().Single(number => number.Maximum == 1440);
-            True(!limit.Enabled);
-            useLimit.Checked = true;
-            True(limit.Enabled);
-            limit.Value = 90;
-            apply.PerformClick();
-            True(form.Visible);
-            var restored = AtomicJson.Read(path, () => new AppSettings(), value => value.Validate(), out _);
-            Equal(90, restored.LimitMinutes);
-            useLimit.Checked = false;
-            apply.PerformClick();
-            Equal(0, saved!.LimitMinutes);
-            var tabs = controls.OfType<TabControl>().Single();
-            for (int index = 0; index < tabs.TabCount; index++)
-            {
-                tabs.SelectedIndex = index;
-                Application.DoEvents();
-                Capture(form, "settings-" + index + ".png");
-            }
-            tabs.SelectedIndex = 0;
-            nint foreground = NativeMethods.GetForegroundWindow();
-            if (foreground == form.Handle)
-            {
-                string name = Path.GetFileName(Environment.ProcessPath!);
-                var settings = new AppSettings { Games = [name], Mode = TrackingMode.Foreground };
-                True(GameDetector.Detect(settings).Games.Contains(name));
-            }
-            else
-            {
-                Console.WriteLine("SKIP: foreground game assertion; Windows did not activate the test form.");
-            }
-            controls.OfType<Button>().Single(button => button.Text == "Сохранить и свернуть").PerformClick();
-            True(saved?.Games.SequenceEqual(["Darktide.exe"]) == true);
-        });
         Check("time editor preserves unchanged seconds and accepts hours and minutes", () =>
         {
             using var dialog = new EditTimeForm("Darktide.exe", 3599.5);
@@ -473,35 +420,6 @@ internal static class TestRunner
             dialog.Show();
             Application.DoEvents();
             Capture(dialog, "edit-time.png");
-        });
-        Check("game input row and common footer fit at minimum width and after scaling", () =>
-        {
-            using var form = new SettingsForm(new AppSettings(), _directory, _ => true, _ => { }, (_, _, _) => { });
-            form.Show();
-            form.Width = form.MinimumSize.Width;
-            foreach (float scale in new[] { 1f, 1.25f })
-            {
-                form.Scale(new SizeF(scale, scale));
-                Application.DoEvents();
-                var controls = Descendants(form).ToList();
-                var input = controls.OfType<TextBox>().Single(text => text.PlaceholderText.Length > 0);
-                Control row = input.Parent!;
-                Control page = row.Parent!.Parent!;
-                Rectangle rowBounds = page.RectangleToClient(row.RectangleToScreen(row.ClientRectangle));
-                True(page.ClientRectangle.Contains(rowBounds));
-                foreach (Control control in row.Controls)
-                {
-                    True(control.Bottom + control.Margin.Bottom <= row.ClientSize.Height);
-                    True(control.Right + control.Margin.Right <= row.ClientSize.Width);
-                    True(Math.Abs(control.Top + control.Height / 2 - input.Top - input.Height / 2) <= 1);
-                    if (control is Button)
-                        True(control.Height >= control.GetPreferredSize(Size.Empty).Height);
-                }
-                var link = controls.OfType<LinkLabel>().Single();
-                True(link.Parent is not TabPage);
-                True(link.Right + link.Margin.Right <= link.Parent!.ClientSize.Width);
-                Capture(form, scale == 1 ? "settings-minimum.png" : "settings-scaled.png");
-            }
         });
         Check("stats selection survives refresh and editing updates displayed total", StatsEditors);
         Check("overlay visibility without a game follows its setting", () =>

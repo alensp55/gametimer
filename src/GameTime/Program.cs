@@ -5,6 +5,7 @@ namespace GameTime;
 
 internal static class Program
 {
+    // Retain the legacy mutex and data directory for compatibility with existing installations.
     internal static string MutexName => @"Local\GameTime-" + WindowsIdentity.GetCurrent().User!.Value;
 
     [STAThread]
@@ -19,8 +20,9 @@ internal static class Program
         {
             if (!tray)
             {
-                MessageBox.Show("GameTime уже работает. Откройте настройки через значок в системном трее.",
-                    "GameTime", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(
+                    UiText.Get("OneMoreTimer уже работает. Откройте настройки через значок в системном трее."),
+                    "OneMoreTimer", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             return;
         }
@@ -34,8 +36,10 @@ internal static class Program
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException
             or InvalidDataException or System.ComponentModel.Win32Exception)
         {
-            MessageBox.Show("Не удалось запустить GameTime.\n" + error.Message + "\n\nДанные: " + directory,
-                "GameTime", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(
+                UiText.Get("Не удалось запустить OneMoreTimer.\n") + error.Message
+                    + UiText.Get("\n\nДанные: ") + directory,
+                "OneMoreTimer", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

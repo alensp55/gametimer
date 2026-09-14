@@ -14,7 +14,7 @@ internal static class TimerDisplay
             return Duration(seconds);
         string text = $"{Duration(seconds)} / {Duration(limitMinutes * 60)}";
         int over = (int)((seconds - limitMinutes * 60) / 60);
-        return over > 0 ? $"{text}  +{over} мин" : text;
+        return over > 0 ? $"{text}  +{over} {UiText.Get("мин")}" : text;
     }
 
     public static bool LimitReached(double seconds, AppSettings settings)

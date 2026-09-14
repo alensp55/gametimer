@@ -7,9 +7,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>app.ico</ApplicationIcon>
-    <Version>0.3.2</Version>
-    <Company>GameTime</Company>
-    <Description>Локальный дневной таймер игр</Description>
+    <AssemblyName>OneMoreTimer</AssemblyName>
+    <RootNamespace>GameTime</RootNamespace>
+    <Product>OneMoreTimer</Product>
+    <Title>OneMoreTimer</Title>
+    <Version>0.6.1</Version>
+    <Company>alensp55</Company>
+    <Description>Daily app time tracker for Windows</Description>
     <DebugType>embedded</DebugType>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>
